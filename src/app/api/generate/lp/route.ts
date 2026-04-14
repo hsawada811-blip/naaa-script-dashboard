@@ -1,5 +1,4 @@
-import { streamText } from "ai";
-import { claudeSonnet } from "@/lib/models";
+import { runClaudeStream } from "@/lib/claude-cli";
 import { getLpGeneratePrompt } from "@/prompts/lp-generate";
 import { getScript, getAppeal } from "@/lib/db/queries";
 
@@ -30,10 +29,8 @@ export async function POST(request: Request) {
     script.articleLpUrl ?? undefined
   );
 
-  const result = streamText({
-    model: claudeSonnet,
-    prompt,
+  const stream = await runClaudeStream(prompt);
+  return new Response(stream, {
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
   });
-
-  return result.toTextStreamResponse();
 }

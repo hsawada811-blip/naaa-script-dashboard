@@ -1,35 +1,8 @@
 import { NextResponse } from "next/server";
-import { generateObject } from "ai";
-import { z } from "zod";
-import { claudeSonnet } from "@/lib/models";
+import { runClaudeJson } from "@/lib/claude-cli";
 import { getAnalyzePrompt } from "@/prompts/script-analyze";
 import { createAnalysis, updateScript, getScript, getAppeal } from "@/lib/db/queries";
-
-const factorSchema = z.object({
-  score: z.number().min(1).max(10),
-  reason: z.string(),
-});
-
-const analysisSchema = z.object({
-  buzzFactors: z.object({
-    hook: factorSchema,
-    emotion: factorSchema,
-    structure: factorSchema,
-    cta: factorSchema,
-    trend: factorSchema,
-  }),
-  conversionFactors: z.object({
-    painPoint: factorSchema,
-    solution: factorSchema,
-    urgency: factorSchema,
-    trust: factorSchema,
-    offer: factorSchema,
-  }),
-  appealPattern: z.string(),
-  overallScore: z.number().min(1).max(10),
-  summary: z.string(),
-  improvementSuggestions: z.array(z.string()),
-});
+import type { BuzzAnalysis } from "@/types";
 
 export async function POST(request: Request) {
   const { scriptId } = await request.json();
@@ -43,7 +16,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "台本が見つかりません" }, { status: 404 });
   }
 
-  // ステータス更新
   updateScript(scriptId, { status: "analyzing" });
 
   const appeal = script.appealId ? getAppeal(script.appealId) : null;
@@ -54,12 +26,32 @@ export async function POST(request: Request) {
     script.articleLpText ?? undefined
   );
 
+  const jsonPrompt = `${prompt}
+
+以下のJSON形式で出力してください:
+{
+  "buzzFactors": {
+    "hook": { "score": 数値1-10, "reason": "理由" },
+    "emotion": { "score": 数値1-10, "reason": "理由" },
+    "structure": { "score": 数値1-10, "reason": "理由" },
+    "cta": { "score": 数値1-10, "reason": "理由" },
+    "trend": { "score": 数値1-10, "reason": "理由" }
+  },
+  "conversionFactors": {
+    "painPoint": { "score": 数値1-10, "reason": "理由" },
+    "solution": { "score": 数値1-10, "reason": "理由" },
+    "urgency": { "score": 数値1-10, "reason": "理由" },
+    "trust": { "score": 数値1-10, "reason": "理由" },
+    "offer": { "score": 数値1-10, "reason": "理由" }
+  },
+  "appealPattern": "訴求パターン名",
+  "overallScore": 数値1-10,
+  "summary": "総評",
+  "improvementSuggestions": ["改善提案1", "改善提案2", "改善提案3"]
+}`;
+
   try {
-    const { object } = await generateObject({
-      model: claudeSonnet,
-      schema: analysisSchema,
-      prompt,
-    });
+    const object = await runClaudeJson<BuzzAnalysis>(jsonPrompt);
 
     const analysis = createAnalysis({
       scriptId,

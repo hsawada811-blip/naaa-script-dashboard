@@ -1,18 +1,14 @@
 import { NextResponse } from "next/server";
-import { generateObject } from "ai";
-import { z } from "zod";
-import { claudeSonnet } from "@/lib/models";
+import { runClaudeJson } from "@/lib/claude-cli";
 import { getScript, getAppeal, getAnalysis, listAppeals } from "@/lib/db/queries";
 
-const suggestionSchema = z.array(
-  z.object({
-    type: z.enum(["appeal", "script"]),
-    title: z.string(),
-    description: z.string(),
-    category: z.string().optional(),
-    confidence: z.number().min(0).max(1),
-  })
-);
+interface Suggestion {
+  type: "appeal" | "script";
+  title: string;
+  description: string;
+  category?: string;
+  confidence: number;
+}
 
 export async function POST(request: Request) {
   const { scriptId, appealPattern } = await request.json();
@@ -52,16 +48,17 @@ ${allAppeals.map((a) => `- ${a.name}（${a.category}）: ${a.description}`).join
 1. 類似する訴求パターン（既存から2つ+新規1つ）を提案
 2. 新しい台本の切り口（2-3案）を提案
 3. 各提案にconfidence（0-1）を付与
-4. 合計5-6個の提案を返してください`;
+4. 合計5-6個の提案を返してください
+
+以下のJSON配列形式で出力:
+[
+  { "type": "appeal", "title": "提案名", "description": "説明", "confidence": 0.8 },
+  { "type": "script", "title": "切り口名", "description": "説明", "confidence": 0.7 }
+]`;
 
   try {
-    const { object } = await generateObject({
-      model: claudeSonnet,
-      schema: suggestionSchema,
-      prompt,
-    });
-
-    return NextResponse.json(object);
+    const suggestions = await runClaudeJson<Suggestion[]>(prompt);
+    return NextResponse.json(suggestions);
   } catch (error) {
     console.error("Suggestion error:", error);
     return NextResponse.json({ error: "提案の生成に失敗しました" }, { status: 500 });
