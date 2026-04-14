@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import * as schema from "./schema";
 
@@ -17,10 +18,100 @@ const HERE = getDirname();
 const DEFAULT_DB_PATH = path.resolve(HERE, "../../../data/script-dashboard.db");
 const dbPath = process.env.DATABASE_PATH ?? DEFAULT_DB_PATH;
 
+function ensureDir(filePath: string) {
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+}
+
 function createDb() {
+  ensureDir(dbPath);
   const sqlite = new Database(dbPath);
   sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("foreign_keys = ON");
+
+  // テーブルが存在しなければ自動作成
+  const tableExists = sqlite.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='users'"
+  ).get();
+
+  if (!tableExists) {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'member',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS appeals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        example_script TEXT,
+        performance_score REAL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS scripts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        original_video_url TEXT,
+        original_script TEXT NOT NULL,
+        persona TEXT NOT NULL DEFAULT '',
+        appeal_id INTEGER REFERENCES appeals(id),
+        article_lp_url TEXT,
+        article_lp_text TEXT,
+        status TEXT NOT NULL DEFAULT 'draft',
+        created_by INTEGER REFERENCES users(id),
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS generated_scripts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        script_id INTEGER NOT NULL REFERENCES scripts(id),
+        variant TEXT NOT NULL,
+        content TEXT NOT NULL,
+        reasoning TEXT,
+        score REAL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS analyses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        script_id INTEGER NOT NULL REFERENCES scripts(id),
+        buzz_factors TEXT NOT NULL,
+        conversion_factors TEXT NOT NULL,
+        appeal_pattern TEXT,
+        overall_score REAL,
+        summary TEXT,
+        improvement_suggestions TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS article_lps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        script_id INTEGER NOT NULL REFERENCES scripts(id),
+        title TEXT NOT NULL,
+        source_url TEXT,
+        generated_text TEXT,
+        generated_html TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS ad_metrics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        platform TEXT NOT NULL,
+        script_id INTEGER REFERENCES scripts(id),
+        impressions INTEGER DEFAULT 0,
+        clicks INTEGER DEFAULT 0,
+        conversions INTEGER DEFAULT 0,
+        cpa REAL,
+        roas REAL,
+        recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
+  }
+
   return drizzle(sqlite, { schema });
 }
 
