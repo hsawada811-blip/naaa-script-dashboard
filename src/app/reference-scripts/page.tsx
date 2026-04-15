@@ -22,6 +22,15 @@ interface ReferenceScript {
   createdAt: string;
 }
 
+function isSafeUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export default function ReferenceScriptsPage() {
   const [items, setItems] = useState<ReferenceScript[]>([]);
   const [count, setCount] = useState(0);
@@ -349,7 +358,7 @@ export default function ReferenceScriptsPage() {
                       )}
                       {(item.videoUrl || item.destinationUrl) && (
                         <div className="flex gap-3 mb-1 text-xs">
-                          {item.videoUrl && (
+                          {item.videoUrl && isSafeUrl(item.videoUrl) && (
                             <a
                               href={item.videoUrl}
                               target="_blank"
@@ -360,7 +369,7 @@ export default function ReferenceScriptsPage() {
                               動画URL
                             </a>
                           )}
-                          {item.destinationUrl && (
+                          {item.destinationUrl && isSafeUrl(item.destinationUrl) && (
                             <a
                               href={item.destinationUrl}
                               target="_blank"

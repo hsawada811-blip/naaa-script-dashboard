@@ -48,6 +48,102 @@ function formatDproItem(item: DproItemSummary, index: number): string {
   return parts.join("\n");
 }
 
+// 候補データの型（Mapのvalue）
+interface CandidateInfo {
+  source: "dpro" | "reference";
+  // DPro用
+  costDifference?: number | null;
+  playCount?: number | null;
+  duration?: number | null;
+  streamingPeriod?: number | null;
+  videoType?: string | null;
+  videoUrl?: string | null;
+  hook?: string | null;
+  scriptText: string;
+  // 参考台本用
+  destinationUrl?: string | null;
+}
+
+/**
+ * エンベディング類似検索の候補リストとMapを構築（IDオフセット不要）
+ */
+function buildSimilaritySearch(
+  dproItems: ReturnType<typeof listDproEmbeddingsByGenre>,
+  refItems: ReturnType<typeof listReferenceScriptsByGenre>,
+  scripts: string[],
+) {
+  if (scripts.length === 0 || scripts[0].trim().length < 10) return null;
+
+  const candidateMap = new Map<number, CandidateInfo>();
+  const candidates: { id: number; embedding: number[] }[] = [];
+  let idx = 0;
+
+  for (const e of dproItems) {
+    if (!e.embedding) continue;
+    candidateMap.set(idx, {
+      source: "dpro",
+      costDifference: e.costDifference,
+      playCount: e.playCount,
+      duration: e.duration,
+      streamingPeriod: e.streamingPeriod,
+      videoType: e.videoType,
+      videoUrl: e.videoUrl,
+      hook: e.hook,
+      scriptText: e.scriptText,
+    });
+    candidates.push({ id: idx, embedding: JSON.parse(e.embedding) as number[] });
+    idx++;
+  }
+
+  for (const r of refItems) {
+    if (!r.embedding) continue;
+    candidateMap.set(idx, {
+      source: "reference",
+      videoUrl: r.videoUrl,
+      destinationUrl: r.destinationUrl,
+      hook: r.hook,
+      scriptText: r.scriptText,
+    });
+    candidates.push({ id: idx, embedding: JSON.parse(r.embedding) as number[] });
+    idx++;
+  }
+
+  if (candidates.length < 3) return null;
+  return { candidates, candidateMap };
+}
+
+/**
+ * 類似検索結果をプロンプト用テキストに変換
+ */
+function formatSimilarResults(
+  similar: { id: number; score: number }[],
+  candidateMap: Map<number, CandidateInfo>,
+): string {
+  const items = similar.map(s => {
+    const c = candidateMap.get(s.id)!;
+    if (c.source === "dpro") {
+      const parts = [`### 好調広告（類似度: ${(s.score * 100).toFixed(1)}%）`];
+      if (c.costDifference) parts.push(`推定広告費: ${Math.round(c.costDifference / 10000)}万円`);
+      if (c.playCount) parts.push(`再生数: ${c.playCount.toLocaleString()}`);
+      if (c.duration) parts.push(`尺: ${c.duration}秒`);
+      if (c.streamingPeriod) parts.push(`配信期間: ${c.streamingPeriod}日`);
+      if (c.videoType) parts.push(`タイプ: ${c.videoType}`);
+      if (c.videoUrl) parts.push(`動画URL: ${c.videoUrl}`);
+      if (c.hook) parts.push(`フック: ${c.hook}`);
+      parts.push(`台本全文:\n${c.scriptText}`);
+      return parts.join("\n");
+    } else {
+      const parts = [`### 参考台本（類似度: ${(s.score * 100).toFixed(1)}%）`];
+      if (c.videoUrl) parts.push(`動画URL: ${c.videoUrl}`);
+      if (c.destinationUrl) parts.push(`遷移先URL: ${c.destinationUrl}`);
+      if (c.hook) parts.push(`フック: ${c.hook}`);
+      parts.push(`台本全文:\n${c.scriptText}`);
+      return parts.join("\n");
+    }
+  });
+  return items.join("\n\n---\n\n");
+}
+
 /**
  * ステップ1: DProリサーチ + エンベディング類似検索 + ペルソナ分析
  */
@@ -140,63 +236,17 @@ async function handleResearch(body: Record<string, unknown>) {
           // === 参考台本がある場合、エンベディング類似検索で最適な台本を選ぶ ===
           if (scripts.length > 0 && scripts[0].trim().length >= 10) {
             const existingEmbeddings = listDproEmbeddingsByGenre(genreName);
-            const refScripts = listReferenceScriptsByGenre(genreName);
+            const refScriptsForEmbed = listReferenceScriptsByGenre(genreName);
 
-            // DPro + referenceScripts の両方を候補として統合
-            const allCandidates: { id: number; embedding: number[]; source: "dpro" | "reference" }[] = [
-              ...existingEmbeddings.map(e => ({
-                id: e.id,
-                embedding: JSON.parse(e.embedding) as number[],
-                source: "dpro" as const,
-              })),
-              ...refScripts
-                .filter(r => r.embedding)
-                .map(r => ({
-                  id: r.id + 100000, // IDが衝突しないようオフセット
-                  embedding: JSON.parse(r.embedding!) as number[],
-                  source: "reference" as const,
-                })),
-            ];
-
-            if (allCandidates.length >= 3) {
-              // 参考台本を結合してクエリベクトルを作成
-              const queryText = scripts.join("\n");
-              const queryEmbedding = await embedText(queryText);
-
-              // 類似度Top 10を取得（候補が増えたため）
-              const similar = findSimilar(queryEmbedding, allCandidates, 10);
-
-              // 類似度の高い台本でdproDataを構築
-              const similarItems = similar.map(s => {
-                const candidate = allCandidates.find(c => c.id === s.id)!;
-                if (candidate.source === "dpro") {
-                  const e = existingEmbeddings.find(e => e.id === s.id)!;
-                  const parts = [`### 好調広告（類似度: ${(s.score * 100).toFixed(1)}% / DPro）`];
-                  if (e.costDifference) parts.push(`推定広告費: ${Math.round(e.costDifference / 10000)}万円`);
-                  if (e.playCount) parts.push(`再生数: ${e.playCount.toLocaleString()}`);
-                  if (e.duration) parts.push(`尺: ${e.duration}秒`);
-                  if (e.streamingPeriod) parts.push(`配信期間: ${e.streamingPeriod}日`);
-                  if (e.videoType) parts.push(`タイプ: ${e.videoType}`);
-                  if (e.videoUrl) parts.push(`動画URL: ${e.videoUrl}`);
-                  if (e.hook) parts.push(`フック: ${e.hook}`);
-                  parts.push(`台本全文:\n${e.scriptText}`);
-                  return parts.join("\n");
-                } else {
-                  const r = refScripts.find(r => r.id + 100000 === s.id)!;
-                  const parts = [`### 参考台本（類似度: ${(s.score * 100).toFixed(1)}%）`];
-                  if (r.videoUrl) parts.push(`動画URL: ${r.videoUrl}`);
-                  if (r.destinationUrl) parts.push(`遷移先URL: ${r.destinationUrl}`);
-                  if (r.hook) parts.push(`フック: ${r.hook}`);
-                  parts.push(`台本全文:\n${r.scriptText}`);
-                  return parts.join("\n");
-                }
-              });
-
-              dproData = similarItems.join("\n\n---\n\n");
+            const result = buildSimilaritySearch(existingEmbeddings, refScriptsForEmbed, scripts);
+            if (result) {
+              const { candidates, candidateMap } = result;
+              const queryEmbedding = await embedText(scripts.join("\n"));
+              const similar = findSimilar(queryEmbedding, candidates, 10);
+              dproData = formatSimilarResults(similar, candidateMap);
               embeddingUsed = true;
-              const dproCount = similar.filter(s => allCandidates.find(c => c.id === s.id)?.source === "dpro").length;
-              const refCount = similar.length - dproCount;
-              console.log(`[Quick generate] エンベディング類似検索: DPro${existingEmbeddings.length}件+参考台本${refScripts.length}件 → 上位${similar.length}件選定（DPro:${dproCount}, 参考:${refCount}）`);
+              const dproCount = similar.filter(s => candidateMap.get(s.id)?.source === "dpro").length;
+              console.log(`[Quick generate] エンベディング類似検索: DPro${existingEmbeddings.length}件+参考台本${refScriptsForEmbed.length}件 → 上位${similar.length}件選定（DPro:${dproCount}, 参考:${similar.length - dproCount}）`);
             }
           }
         } catch (embErr) {
@@ -219,62 +269,18 @@ async function handleResearch(body: Record<string, unknown>) {
   // === ジャンル未指定 or DPro未ヒットでも、参考台本があればDB全体からエンベディング類似検索 ===
   if (!embeddingUsed && scripts.length > 0 && scripts[0].trim().length >= 10) {
     try {
-      const existingEmbeddings = genre
-        ? listDproEmbeddingsByGenre(genre)
-        : listAllDproEmbeddings();
-      const refScripts = genre
-        ? listReferenceScriptsByGenre(genre)
-        : listAllReferenceScripts();
+      const fbEmbeddings = genre ? listDproEmbeddingsByGenre(genre) : listAllDproEmbeddings();
+      const fbRefScripts = genre ? listReferenceScriptsByGenre(genre) : listAllReferenceScripts();
 
-      const allCandidates: { id: number; embedding: number[]; source: "dpro" | "reference" }[] = [
-        ...existingEmbeddings
-          .filter(e => e.embedding)
-          .map(e => ({
-            id: e.id,
-            embedding: JSON.parse(e.embedding) as number[],
-            source: "dpro" as const,
-          })),
-        ...refScripts
-          .filter(r => r.embedding)
-          .map(r => ({
-            id: r.id + 100000,
-            embedding: JSON.parse(r.embedding!) as number[],
-            source: "reference" as const,
-          })),
-      ];
-
-      if (allCandidates.length >= 3) {
-        const queryText = scripts.join("\n");
-        const queryEmbedding = await embedText(queryText);
-        const similar = findSimilar(queryEmbedding, allCandidates, 10);
-
-        const similarItems = similar.map(s => {
-          const candidate = allCandidates.find(c => c.id === s.id)!;
-          if (candidate.source === "dpro") {
-            const e = existingEmbeddings.find(e => e.id === s.id)!;
-            const parts = [`### 好調広告（類似度: ${(s.score * 100).toFixed(1)}% / DB）`];
-            if (e.costDifference) parts.push(`推定広告費: ${Math.round(e.costDifference / 10000)}万円`);
-            if (e.playCount) parts.push(`再生数: ${e.playCount.toLocaleString()}`);
-            if (e.duration) parts.push(`尺: ${e.duration}秒`);
-            if (e.streamingPeriod) parts.push(`配信期間: ${e.streamingPeriod}日`);
-            if (e.videoType) parts.push(`タイプ: ${e.videoType}`);
-            if (e.videoUrl) parts.push(`動画URL: ${e.videoUrl}`);
-            if (e.hook) parts.push(`フック: ${e.hook}`);
-            parts.push(`台本全文:\n${e.scriptText}`);
-            return parts.join("\n");
-          } else {
-            const r = refScripts.find(r => r.id + 100000 === s.id)!;
-            const parts = [`### 参考台本（類似度: ${(s.score * 100).toFixed(1)}%）`];
-            if (r.hook) parts.push(`フック: ${r.hook}`);
-            parts.push(`台本全文:\n${r.scriptText}`);
-            return parts.join("\n");
-          }
-        });
-
-        dproData = similarItems.join("\n\n---\n\n");
+      const result = buildSimilaritySearch(fbEmbeddings, fbRefScripts, scripts);
+      if (result) {
+        const { candidates, candidateMap } = result;
+        const queryEmbedding = await embedText(scripts.join("\n"));
+        const similar = findSimilar(queryEmbedding, candidates, 10);
+        dproData = formatSimilarResults(similar, candidateMap);
         embeddingUsed = true;
-        const scope = genre ? genre : "全DB";
-        console.log(`[Quick generate] フォールバック類似検索（${scope}）: ${allCandidates.length}件 → 上位${similar.length}件選定`);
+        const scope = genre || "全DB";
+        console.log(`[Quick generate] フォールバック類似検索（${scope}）: ${candidates.length}件 → 上位${similar.length}件選定`);
       }
     } catch (fallbackErr) {
       console.log("[Quick generate] フォールバック類似検索スキップ:", fallbackErr instanceof Error ? fallbackErr.message : fallbackErr);

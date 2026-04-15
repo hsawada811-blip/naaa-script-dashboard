@@ -1,4 +1,4 @@
-import { eq, desc, count, and } from "drizzle-orm";
+import { eq, desc, count, and, sql } from "drizzle-orm";
 import { db } from "./client";
 import {
   users, scripts, generatedScripts, analyses, appeals, articleLps,
@@ -315,15 +315,17 @@ export function countReferenceScripts() {
   return db.select({ value: count() }).from(referenceScripts).get()?.value ?? 0;
 }
 
-// DB登録済みジャンルを重複排除で取得（dpro_embeddings + reference_scripts + research_projects）
+// DB登録済みジャンルを重複排除で取得（UNION + DISTINCT）
 export function listDistinctGenres(): string[] {
-  const dproGenres = db.select({ genre: dproEmbeddings.genre }).from(dproEmbeddings).all();
-  const refGenres = db.select({ genre: referenceScripts.genre }).from(referenceScripts).all();
-  const researchGenres = db.select({ genre: researchProjects.genre }).from(researchProjects).all();
-  const all = [...dproGenres, ...refGenres, ...researchGenres]
-    .map(r => r.genre)
-    .filter((g): g is string => !!g && g.trim().length > 0);
-  return [...new Set(all)].sort();
+  const rows = db.all<{ genre: string }>(sql`
+    SELECT DISTINCT genre FROM dpro_embeddings WHERE genre IS NOT NULL AND genre != ''
+    UNION
+    SELECT DISTINCT genre FROM reference_scripts WHERE genre IS NOT NULL AND genre != ''
+    UNION
+    SELECT DISTINCT genre FROM research_projects WHERE genre IS NOT NULL AND genre != ''
+    ORDER BY genre
+  `);
+  return rows.map(r => r.genre);
 }
 
 // 全参考台本を取得（ジャンル横断検索用）

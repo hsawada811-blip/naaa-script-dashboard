@@ -420,8 +420,17 @@ export default function QuickGeneratePage() {
   const [showNewProject, setShowNewProject] = useState(false);
 
   useEffect(() => {
-    fetch("/api/projects").then(r => r.json()).then(setProjectList).catch(() => {});
-    fetch("/api/genres").then(r => r.json()).then(setGenreList).catch(() => {});
+    const load = async () => {
+      try {
+        const [projRes, genreRes] = await Promise.all([
+          fetch("/api/projects"),
+          fetch("/api/genres"),
+        ]);
+        setProjectList(await projRes.json());
+        setGenreList(await genreRes.json());
+      } catch { /* ignore */ }
+    };
+    load();
   }, []);
 
   async function handleCreateProject() {
@@ -737,10 +746,14 @@ export default function QuickGeneratePage() {
             <div className="space-y-1">
               <Label>ジャンル</Label>
               <Select
-                value={isCustomGenre ? "__custom__" : genre}
+                value={isCustomGenre ? "__custom__" : (genre || "__none__")}
                 onValueChange={(v) => {
                   if (!v) return;
-                  if (v === "__custom__") {
+                  if (v === "__none__") {
+                    setIsCustomGenre(false);
+                    setCustomGenre("");
+                    setGenre("");
+                  } else if (v === "__custom__") {
                     setIsCustomGenre(true);
                     setGenre(customGenre);
                   } else {
@@ -752,14 +765,16 @@ export default function QuickGeneratePage() {
               >
                 <SelectTrigger className="text-base">
                   <SelectValue>
-                    {isCustomGenre ? "その他（カスタム入力）" : (genre || "ジャンルを選択")}
+                    {isCustomGenre ? "その他（カスタム入力）" : (genre || "未選択")}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="__none__">未選択</SelectItem>
+                  {genreList.genres.length > 0 && <SelectSeparator />}
                   {genreList.genres.map((g) => (
                     <SelectItem key={g} value={g}>{g}</SelectItem>
                   ))}
-                  {genreList.genres.length > 0 && <SelectSeparator />}
+                  <SelectSeparator />
                   <SelectItem value="__custom__">その他（カスタム入力）</SelectItem>
                 </SelectContent>
               </Select>
