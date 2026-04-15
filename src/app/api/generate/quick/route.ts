@@ -18,6 +18,7 @@ interface DproItemSummary {
   duration?: number;
   streaming_period?: number;
   video_type?: string;
+  video_url?: string;
 }
 
 /**
@@ -40,6 +41,7 @@ function formatDproItem(item: DproItemSummary, index: number): string {
   if (item.duration) parts.push(`尺: ${item.duration}秒`);
   if (item.streaming_period) parts.push(`配信期間: ${item.streaming_period}日`);
   if (item.video_type) parts.push(`タイプ: ${item.video_type}`);
+  if (item.video_url) parts.push(`動画URL: ${item.video_url}`);
   if (item.ad_start_sentence) parts.push(`フック: ${item.ad_start_sentence}`);
   if (item.ad_all_sentence) parts.push(`台本全文:\n${item.ad_all_sentence}`);
   else if (item.narration) parts.push(`ナレーション:\n${item.narration}`);
@@ -125,6 +127,7 @@ async function handleResearch(body: Record<string, unknown>) {
               duration: item.duration || null,
               streamingPeriod: item.streaming_period || null,
               videoType: item.video_type || null,
+              videoUrl: item.video_url || null,
               genre: genreName,
               contentHash: hashText(scriptText),
             });
@@ -174,6 +177,7 @@ async function handleResearch(body: Record<string, unknown>) {
                   if (e.duration) parts.push(`尺: ${e.duration}秒`);
                   if (e.streamingPeriod) parts.push(`配信期間: ${e.streamingPeriod}日`);
                   if (e.videoType) parts.push(`タイプ: ${e.videoType}`);
+                  if (e.videoUrl) parts.push(`動画URL: ${e.videoUrl}`);
                   if (e.hook) parts.push(`フック: ${e.hook}`);
                   parts.push(`台本全文:\n${e.scriptText}`);
                   return parts.join("\n");

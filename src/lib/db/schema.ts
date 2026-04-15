@@ -156,6 +156,7 @@ export const dproEmbeddings = sqliteTable("dpro_embeddings", {
   duration: integer("duration"),
   streamingPeriod: integer("streaming_period"),
   videoType: text("video_type"),
+  videoUrl: text("video_url"),
   genre: text("genre"),
   contentHash: text("content_hash").notNull(), // 重複防止用
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),

@@ -75,6 +75,7 @@ function DproResearchData({ rawData }: { rawData: string }) {
       duration: get("尺"),
       streamingPeriod: get("配信期間"),
       videoType: get("タイプ"),
+      videoUrl: get("動画URL"),
       hook: get("フック"),
       script: scriptMatch?.[1]?.trim() || narrationMatch?.[1]?.trim() || "",
       source: isReference ? "参考台本" : "DPro",
@@ -102,6 +103,23 @@ function DproResearchData({ rawData }: { rawData: string }) {
           </div>
           {expandedIdx === i && item.script && (
             <div className="border-t px-3 py-2 space-y-2">
+              {item.videoUrl && (() => {
+                const embed = getVideoEmbedUrl(item.videoUrl);
+                return (
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">動画プレビュー</p>
+                    {embed ? (
+                      <div className="rounded overflow-hidden border bg-black max-w-sm">
+                        <iframe src={embed.embedUrl} className="w-full aspect-video" allow="autoplay" allowFullScreen />
+                      </div>
+                    ) : (
+                      <a href={item.videoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline break-all">
+                        {item.videoUrl}
+                      </a>
+                    )}
+                  </div>
+                );
+              })()}
               {item.hook && (
                 <div>
                   <p className="text-xs text-muted-foreground mb-1">フック</p>

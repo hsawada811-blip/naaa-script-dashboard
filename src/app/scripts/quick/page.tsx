@@ -76,9 +76,10 @@ interface DproItem {
   duration: string;
   streamingPeriod: string;
   videoType: string;
+  videoUrl: string;
   hook: string;
   script: string;
-  source: "dpro" | "reference"; // データ元の区別
+  source: "dpro" | "reference";
 }
 
 function parseDproData(raw: string): DproItem[] {
@@ -99,6 +100,7 @@ function parseDproData(raw: string): DproItem[] {
       duration: get("尺"),
       streamingPeriod: get("配信期間"),
       videoType: get("タイプ"),
+      videoUrl: get("動画URL"),
       hook: get("フック"),
       script: scriptMatch?.[1]?.trim() || narrationMatch?.[1]?.trim() || "",
       source: isReference ? "reference" as const : "dpro" as const,
@@ -133,6 +135,23 @@ function DproItemRow({ item, index, copiedField, onCopy }: {
       </div>
       {open && hasScript && (
         <div className="border-t px-3 py-2 space-y-2">
+          {item.videoUrl && (() => {
+            const embed = getVideoEmbedUrl(item.videoUrl);
+            return (
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">動画プレビュー</p>
+                {embed ? (
+                  <div className="rounded overflow-hidden border bg-black max-w-sm">
+                    <iframe src={embed.embedUrl} className="w-full aspect-video" allow="autoplay" allowFullScreen />
+                  </div>
+                ) : (
+                  <a href={item.videoUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline break-all">
+                    {item.videoUrl}
+                  </a>
+                )}
+              </div>
+            );
+          })()}
           {item.hook && (
             <div>
               <p className="text-xs text-muted-foreground mb-1">フック</p>
