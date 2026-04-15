@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getVideoEmbedUrl } from "@/lib/video-preview";
 
 // --- 型定義 ---
@@ -751,31 +751,15 @@ export default function QuickGeneratePage() {
                 }}
               >
                 <SelectTrigger className="text-base">
-                  <SelectValue placeholder="ジャンルを選択" />
+                  <SelectValue>
+                    {isCustomGenre ? "その他（カスタム入力）" : (genre || "ジャンルを選択")}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectGroup>
-                    <SelectLabel>よく使うジャンル</SelectLabel>
-                    {genreList.presets.map((g) => (
-                      <SelectItem key={`preset-${g}`} value={g}>
-                        {g}{genreList.dbGenres.includes(g) ? "（データあり）" : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                  {genreList.dbGenres.filter(g => !genreList.presets.includes(g)).length > 0 && (
-                    <>
-                      <SelectSeparator />
-                      <SelectGroup>
-                        <SelectLabel>過去に使用</SelectLabel>
-                        {genreList.dbGenres
-                          .filter(g => !genreList.presets.includes(g))
-                          .map((g) => (
-                            <SelectItem key={`db-${g}`} value={g}>{g}</SelectItem>
-                          ))}
-                      </SelectGroup>
-                    </>
-                  )}
-                  <SelectSeparator />
+                  {genreList.genres.map((g) => (
+                    <SelectItem key={g} value={g}>{g}</SelectItem>
+                  ))}
+                  {genreList.genres.length > 0 && <SelectSeparator />}
                   <SelectItem value="__custom__">その他（カスタム入力）</SelectItem>
                 </SelectContent>
               </Select>
