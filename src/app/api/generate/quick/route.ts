@@ -6,7 +6,7 @@ export const maxDuration = 300;
 import { getResearchAnalysisPrompt, getScriptGenerationPrompt } from "@/prompts/quick-generate";
 import { getDproClient } from "@/lib/dpro";
 import { embedText, embedTexts, findSimilar } from "@/lib/embedding";
-import { upsertDproEmbedding, listDproEmbeddingsByGenre, listReferenceScriptsByGenre, createScript, createGeneratedScript, updateScript } from "@/lib/db/queries";
+import { upsertDproEmbedding, listDproEmbeddingsByGenre, listAllDproEmbeddings, listReferenceScriptsByGenre, listAllReferenceScripts, createScript, createGeneratedScript, updateScript } from "@/lib/db/queries";
 import { hashText } from "@/lib/utils";
 
 interface DproItemSummary {
@@ -60,7 +60,7 @@ async function handleResearch(body: Record<string, unknown>) {
   let dproData = "";
   let embeddingUsed = false;
   let matchedTerm = "";
-  const searchTerm = genre || (scripts[0]?.slice(0, 50) || "");
+  const searchTerm = genre || "";
 
   try {
     const dpro = getDproClient();
@@ -214,6 +214,71 @@ async function handleResearch(body: Record<string, unknown>) {
     console.log("[Quick generate] DPro検索スキップ:", err instanceof Error ? err.message : err);
   }
 
+  // === ジャンル未指定 or DPro未ヒットでも、参考台本があればDB全体からエンベディング類似検索 ===
+  if (!embeddingUsed && scripts.length > 0 && scripts[0].trim().length >= 10) {
+    try {
+      const existingEmbeddings = genre
+        ? listDproEmbeddingsByGenre(genre)
+        : listAllDproEmbeddings();
+      const refScripts = genre
+        ? listReferenceScriptsByGenre(genre)
+        : listAllReferenceScripts();
+
+      const allCandidates: { id: number; embedding: number[]; source: "dpro" | "reference" }[] = [
+        ...existingEmbeddings
+          .filter(e => e.embedding)
+          .map(e => ({
+            id: e.id,
+            embedding: JSON.parse(e.embedding) as number[],
+            source: "dpro" as const,
+          })),
+        ...refScripts
+          .filter(r => r.embedding)
+          .map(r => ({
+            id: r.id + 100000,
+            embedding: JSON.parse(r.embedding!) as number[],
+            source: "reference" as const,
+          })),
+      ];
+
+      if (allCandidates.length >= 3) {
+        const queryText = scripts.join("\n");
+        const queryEmbedding = await embedText(queryText);
+        const similar = findSimilar(queryEmbedding, allCandidates, 10);
+
+        const similarItems = similar.map(s => {
+          const candidate = allCandidates.find(c => c.id === s.id)!;
+          if (candidate.source === "dpro") {
+            const e = existingEmbeddings.find(e => e.id === s.id)!;
+            const parts = [`### 好調広告（類似度: ${(s.score * 100).toFixed(1)}% / DB）`];
+            if (e.costDifference) parts.push(`推定広告費: ${Math.round(e.costDifference / 10000)}万円`);
+            if (e.playCount) parts.push(`再生数: ${e.playCount.toLocaleString()}`);
+            if (e.duration) parts.push(`尺: ${e.duration}秒`);
+            if (e.streamingPeriod) parts.push(`配信期間: ${e.streamingPeriod}日`);
+            if (e.videoType) parts.push(`タイプ: ${e.videoType}`);
+            if (e.videoUrl) parts.push(`動画URL: ${e.videoUrl}`);
+            if (e.hook) parts.push(`フック: ${e.hook}`);
+            parts.push(`台本全文:\n${e.scriptText}`);
+            return parts.join("\n");
+          } else {
+            const r = refScripts.find(r => r.id + 100000 === s.id)!;
+            const parts = [`### 参考台本（類似度: ${(s.score * 100).toFixed(1)}%）`];
+            if (r.hook) parts.push(`フック: ${r.hook}`);
+            parts.push(`台本全文:\n${r.scriptText}`);
+            return parts.join("\n");
+          }
+        });
+
+        dproData = similarItems.join("\n\n---\n\n");
+        embeddingUsed = true;
+        const scope = genre ? genre : "全DB";
+        console.log(`[Quick generate] フォールバック類似検索（${scope}）: ${allCandidates.length}件 → 上位${similar.length}件選定`);
+      }
+    } catch (fallbackErr) {
+      console.log("[Quick generate] フォールバック類似検索スキップ:", fallbackErr instanceof Error ? fallbackErr.message : fallbackErr);
+    }
+  }
+
   // referenceScriptsの件数を取得
   const genreName = genre || searchTerm;
   const refScriptCount = genreName ? listReferenceScriptsByGenre(genreName).length : 0;
@@ -284,7 +349,7 @@ async function handleGenerate(body: Record<string, unknown>) {
 
       const script = createScript({
         title,
-        originalScript: scripts[0] || "(ジャンル入力のみ)",
+        originalScript: scripts.filter(s => s.trim()).join("\n\n---\n\n") || "(ジャンル入力のみ)",
         projectId: projectId || null,
         dproData: dproData || null,
         researchAnalysis: analysisResult || null,

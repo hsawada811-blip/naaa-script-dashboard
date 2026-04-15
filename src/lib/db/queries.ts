@@ -314,3 +314,19 @@ export function listReferenceScriptsByGenre(genre: string) {
 export function countReferenceScripts() {
   return db.select({ value: count() }).from(referenceScripts).get()?.value ?? 0;
 }
+
+// DB登録済みジャンルを重複排除で取得（dpro_embeddings + reference_scripts + research_projects）
+export function listDistinctGenres(): string[] {
+  const dproGenres = db.select({ genre: dproEmbeddings.genre }).from(dproEmbeddings).all();
+  const refGenres = db.select({ genre: referenceScripts.genre }).from(referenceScripts).all();
+  const researchGenres = db.select({ genre: researchProjects.genre }).from(researchProjects).all();
+  const all = [...dproGenres, ...refGenres, ...researchGenres]
+    .map(r => r.genre)
+    .filter((g): g is string => !!g && g.trim().length > 0);
+  return [...new Set(all)].sort();
+}
+
+// 全参考台本を取得（ジャンル横断検索用）
+export function listAllReferenceScripts() {
+  return db.select().from(referenceScripts).orderBy(desc(referenceScripts.createdAt)).all();
+}

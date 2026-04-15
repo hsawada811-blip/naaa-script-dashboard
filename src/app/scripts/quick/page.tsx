@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { getVideoEmbedUrl } from "@/lib/video-preview";
 
 // --- 型定義 ---
@@ -405,6 +406,9 @@ export default function QuickGeneratePage() {
   // 入力
   const [scripts, setScripts] = useState<string[]>([""]);
   const [genre, setGenre] = useState("");
+  const [genreList, setGenreList] = useState<{ genres: string[]; dbGenres: string[]; presets: string[] }>({ genres: [], dbGenres: [], presets: [] });
+  const [isCustomGenre, setIsCustomGenre] = useState(false);
+  const [customGenre, setCustomGenre] = useState("");
   const [articleLpText, setArticleLpText] = useState("");
   const [articleLpUrl, setArticleLpUrl] = useState("");
   const [instructions, setInstructions] = useState("");
@@ -417,6 +421,7 @@ export default function QuickGeneratePage() {
 
   useEffect(() => {
     fetch("/api/projects").then(r => r.json()).then(setProjectList).catch(() => {});
+    fetch("/api/genres").then(r => r.json()).then(setGenreList).catch(() => {});
   }, []);
 
   async function handleCreateProject() {
@@ -731,12 +736,61 @@ export default function QuickGeneratePage() {
             {/* ジャンル（重要） */}
             <div className="space-y-1">
               <Label>ジャンル</Label>
-              <Input
-                value={genre}
-                onChange={(e) => setGenre(e.target.value)}
-                placeholder="例: 債務整理、IT転職、不動産査定、車査定、美容"
-                className="text-base"
-              />
+              <Select
+                value={isCustomGenre ? "__custom__" : genre}
+                onValueChange={(v) => {
+                  if (!v) return;
+                  if (v === "__custom__") {
+                    setIsCustomGenre(true);
+                    setGenre(customGenre);
+                  } else {
+                    setIsCustomGenre(false);
+                    setCustomGenre("");
+                    setGenre(v);
+                  }
+                }}
+              >
+                <SelectTrigger className="text-base">
+                  <SelectValue placeholder="ジャンルを選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel>よく使うジャンル</SelectLabel>
+                    {genreList.presets.map((g) => (
+                      <SelectItem key={`preset-${g}`} value={g}>
+                        {g}{genreList.dbGenres.includes(g) ? "（データあり）" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                  {genreList.dbGenres.filter(g => !genreList.presets.includes(g)).length > 0 && (
+                    <>
+                      <SelectSeparator />
+                      <SelectGroup>
+                        <SelectLabel>過去に使用</SelectLabel>
+                        {genreList.dbGenres
+                          .filter(g => !genreList.presets.includes(g))
+                          .map((g) => (
+                            <SelectItem key={`db-${g}`} value={g}>{g}</SelectItem>
+                          ))}
+                      </SelectGroup>
+                    </>
+                  )}
+                  <SelectSeparator />
+                  <SelectItem value="__custom__">その他（カスタム入力）</SelectItem>
+                </SelectContent>
+              </Select>
+              {isCustomGenre && (
+                <Input
+                  value={customGenre}
+                  onChange={(e) => {
+                    setCustomGenre(e.target.value);
+                    setGenre(e.target.value);
+                  }}
+                  placeholder="ジャンル名を入力"
+                  className="text-base mt-2"
+                  autoFocus
+                />
+              )}
               <p className="text-xs text-muted-foreground">DProで同ジャンルの好調広告を自動リサーチします</p>
             </div>
 

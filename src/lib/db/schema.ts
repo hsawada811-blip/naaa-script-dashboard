@@ -142,6 +142,8 @@ export const referenceScripts = sqliteTable("reference_scripts", {
   contentHash: text("content_hash").notNull(),
   source: text("source").default("manual"), // "manual" | "csv_import" | "dpro"
   genre: text("genre"),
+  videoUrl: text("video_url"),
+  destinationUrl: text("destination_url"),
   metadata: text("metadata"), // JSON: 投稿日, 再生数, 広告費等
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
 });

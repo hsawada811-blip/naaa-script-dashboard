@@ -96,6 +96,20 @@ function createDb() {
         );
       `);
     }
+
+    // マイグレーション: reference_scripts に video_url, destination_url カラム追加
+    const refExists = sqlite.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='reference_scripts'"
+    ).get();
+    if (refExists) {
+      const refCols = sqlite.prepare("PRAGMA table_info(reference_scripts)").all() as { name: string }[];
+      if (!refCols.find((c) => c.name === "video_url")) {
+        sqlite.exec("ALTER TABLE reference_scripts ADD COLUMN video_url TEXT");
+      }
+      if (!refCols.find((c) => c.name === "destination_url")) {
+        sqlite.exec("ALTER TABLE reference_scripts ADD COLUMN destination_url TEXT");
+      }
+    }
   }
 
   if (!tableExists) {

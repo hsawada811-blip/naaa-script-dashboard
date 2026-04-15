@@ -21,11 +21,13 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { scriptText, hook, projectId, genre } = body as {
+    const { scriptText, hook, projectId, genre, videoUrl, destinationUrl } = body as {
       scriptText: string;
       hook?: string;
       projectId?: number;
       genre?: string;
+      videoUrl?: string;
+      destinationUrl?: string;
     };
 
     if (!scriptText || scriptText.trim().length < 10) {
@@ -49,6 +51,8 @@ export async function POST(request: Request) {
       source: "manual",
       projectId: projectId || null,
       genre: genre || null,
+      videoUrl: videoUrl?.trim() || null,
+      destinationUrl: destinationUrl?.trim() || null,
       metadata: null,
     });
 

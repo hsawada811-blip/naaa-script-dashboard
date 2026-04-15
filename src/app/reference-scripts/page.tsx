@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface ReferenceScript {
   id: number;
@@ -14,6 +15,8 @@ interface ReferenceScript {
   hook: string | null;
   source: string | null;
   genre: string | null;
+  videoUrl: string | null;
+  destinationUrl: string | null;
   projectId: number | null;
   metadata: string | null;
   createdAt: string;
@@ -37,7 +40,12 @@ export default function ReferenceScriptsPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [newScriptText, setNewScriptText] = useState("");
   const [newGenre, setNewGenre] = useState("");
+  const [newVideoUrl, setNewVideoUrl] = useState("");
+  const [newDestinationUrl, setNewDestinationUrl] = useState("");
   const [adding, setAdding] = useState(false);
+  const [isCustomGenre, setIsCustomGenre] = useState(false);
+  const [customGenre, setCustomGenre] = useState("");
+  const [genreList, setGenreList] = useState<{ genres: string[]; dbGenres: string[]; presets: string[] }>({ genres: [], dbGenres: [], presets: [] });
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
@@ -52,6 +60,7 @@ export default function ReferenceScriptsPage() {
 
   useEffect(() => {
     fetchItems();
+    fetch("/api/genres").then(r => r.json()).then(setGenreList).catch(() => {});
   }, [fetchItems]);
 
   async function handleDelete(id: number) {
@@ -94,13 +103,23 @@ export default function ReferenceScriptsPage() {
       const res = await fetch("/api/reference-scripts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scriptText: newScriptText, genre: newGenre || undefined }),
+        body: JSON.stringify({
+          scriptText: newScriptText,
+          genre: newGenre || undefined,
+          videoUrl: newVideoUrl || undefined,
+          destinationUrl: newDestinationUrl || undefined,
+        }),
       });
       const data = await res.json();
       if (data.error) {
         alert(data.error);
       } else {
         setNewScriptText("");
+        setNewVideoUrl("");
+        setNewDestinationUrl("");
+        setNewGenre("");
+        setIsCustomGenre(false);
+        setCustomGenre("");
         setShowAdd(false);
         fetchItems();
       }
@@ -200,12 +219,61 @@ export default function ReferenceScriptsPage() {
           <CardContent className="pt-4 space-y-3">
             <div>
               <Label className="text-sm">ジャンル</Label>
-              <Input
-                placeholder="例: 債務整理"
-                value={newGenre}
-                onChange={e => setNewGenre(e.target.value)}
-                className="mt-1"
-              />
+              <Select
+                value={isCustomGenre ? "__custom__" : newGenre}
+                onValueChange={(v) => {
+                  if (!v) return;
+                  if (v === "__custom__") {
+                    setIsCustomGenre(true);
+                    setNewGenre(customGenre);
+                  } else {
+                    setIsCustomGenre(false);
+                    setCustomGenre("");
+                    setNewGenre(v);
+                  }
+                }}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="ジャンルを選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel>よく使うジャンル</SelectLabel>
+                    {genreList.presets.map((g) => (
+                      <SelectItem key={`preset-${g}`} value={g}>
+                        {g}{genreList.dbGenres.includes(g) ? "（データあり）" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                  {genreList.dbGenres.filter(g => !genreList.presets.includes(g)).length > 0 && (
+                    <>
+                      <SelectSeparator />
+                      <SelectGroup>
+                        <SelectLabel>過去に使用</SelectLabel>
+                        {genreList.dbGenres
+                          .filter(g => !genreList.presets.includes(g))
+                          .map((g) => (
+                            <SelectItem key={`db-${g}`} value={g}>{g}</SelectItem>
+                          ))}
+                      </SelectGroup>
+                    </>
+                  )}
+                  <SelectSeparator />
+                  <SelectItem value="__custom__">その他（カスタム入力）</SelectItem>
+                </SelectContent>
+              </Select>
+              {isCustomGenre && (
+                <Input
+                  value={customGenre}
+                  onChange={(e) => {
+                    setCustomGenre(e.target.value);
+                    setNewGenre(e.target.value);
+                  }}
+                  placeholder="ジャンル名を入力"
+                  className="mt-2"
+                  autoFocus
+                />
+              )}
             </div>
             <div>
               <Label className="text-sm">台本テキスト</Label>
@@ -214,6 +282,24 @@ export default function ReferenceScriptsPage() {
                 value={newScriptText}
                 onChange={e => setNewScriptText(e.target.value)}
                 rows={6}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label className="text-sm">動画URL（任意）</Label>
+              <Input
+                placeholder="https://..."
+                value={newVideoUrl}
+                onChange={e => setNewVideoUrl(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label className="text-sm">遷移先URL（任意）</Label>
+              <Input
+                placeholder="https://..."
+                value={newDestinationUrl}
+                onChange={e => setNewDestinationUrl(e.target.value)}
                 className="mt-1"
               />
             </div>
@@ -253,6 +339,32 @@ export default function ReferenceScriptsPage() {
                       </div>
                       {item.hook && (
                         <p className="text-sm font-medium mb-1 truncate">{item.hook}</p>
+                      )}
+                      {(item.videoUrl || item.destinationUrl) && (
+                        <div className="flex gap-3 mb-1 text-xs">
+                          {item.videoUrl && (
+                            <a
+                              href={item.videoUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-500 hover:underline"
+                              onClick={e => e.stopPropagation()}
+                            >
+                              動画URL
+                            </a>
+                          )}
+                          {item.destinationUrl && (
+                            <a
+                              href={item.destinationUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-500 hover:underline"
+                              onClick={e => e.stopPropagation()}
+                            >
+                              遷移先URL
+                            </a>
+                          )}
+                        </div>
                       )}
                       {expanded ? (
                         <p className="text-sm text-muted-foreground whitespace-pre-wrap">{item.scriptText}</p>
