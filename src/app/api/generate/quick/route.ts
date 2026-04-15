@@ -184,6 +184,8 @@ async function handleResearch(body: Record<string, unknown>) {
                 } else {
                   const r = refScripts.find(r => r.id + 100000 === s.id)!;
                   const parts = [`### 参考台本（類似度: ${(s.score * 100).toFixed(1)}%）`];
+                  if (r.videoUrl) parts.push(`動画URL: ${r.videoUrl}`);
+                  if (r.destinationUrl) parts.push(`遷移先URL: ${r.destinationUrl}`);
                   if (r.hook) parts.push(`フック: ${r.hook}`);
                   parts.push(`台本全文:\n${r.scriptText}`);
                   return parts.join("\n");
