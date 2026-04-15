@@ -22,11 +22,12 @@ export async function POST(request: Request) {
 
   const appeal = script.appealId ? getAppeal(script.appealId) : null;
   const analysis = getAnalysis(scriptId);
+  const appealInfo = [appeal?.name, script.appealText].filter(Boolean).join(" / ");
 
   const prompt = getScriptGeneratePrompt(
     script.originalScript,
     script.persona,
-    appeal?.name ?? "",
+    appealInfo || "",
     variant,
     analysis?.summary ?? undefined
   );

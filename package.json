@@ -12,6 +12,7 @@
     "@ai-sdk/anthropic": "^3.0.69",
     "@ai-sdk/react": "^3.0.161",
     "@base-ui/react": "^1.4.0",
+    "@google/genai": "^1.50.0",
     "ai": "^6.0.159",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.9.0",

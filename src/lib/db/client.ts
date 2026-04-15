@@ -36,6 +36,68 @@ function createDb() {
     "SELECT name FROM sqlite_master WHERE type='table' AND name='users'"
   ).get();
 
+  if (tableExists) {
+    // マイグレーション: appeal_text カラム追加
+    const cols = sqlite.prepare("PRAGMA table_info(scripts)").all() as { name: string }[];
+    if (!cols.find((c) => c.name === "appeal_text")) {
+      sqlite.exec("ALTER TABLE scripts ADD COLUMN appeal_text TEXT");
+    }
+
+    // マイグレーション: projectsテーブル追加
+    const projectsExists = sqlite.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='projects'"
+    ).get();
+    if (!projectsExists) {
+      sqlite.exec(`
+        CREATE TABLE projects (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          description TEXT,
+          color TEXT NOT NULL DEFAULT '#6366f1',
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+      `);
+    }
+
+    // マイグレーション: scripts.project_id カラム追加
+    if (!cols.find((c) => c.name === "project_id")) {
+      sqlite.exec("ALTER TABLE scripts ADD COLUMN project_id INTEGER REFERENCES projects(id)");
+    }
+
+    // マイグレーション: リサーチテーブル追加
+    const researchExists = sqlite.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='research_projects'"
+    ).get();
+    if (!researchExists) {
+      sqlite.exec(`
+        CREATE TABLE research_projects (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          title TEXT NOT NULL,
+          genre TEXT NOT NULL,
+          conditions TEXT NOT NULL DEFAULT '{}',
+          free_text TEXT,
+          status TEXT NOT NULL DEFAULT 'idle',
+          result_count INTEGER DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE research_results (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id INTEGER NOT NULL REFERENCES research_projects(id),
+          video_url TEXT,
+          platform TEXT,
+          title TEXT NOT NULL,
+          script TEXT,
+          hook_type TEXT,
+          appeal_type TEXT,
+          estimated_views TEXT,
+          notes TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+      `);
+    }
+  }
+
   if (!tableExists) {
     sqlite.exec(`
       CREATE TABLE IF NOT EXISTS users (
@@ -43,6 +105,13 @@ function createDb() {
         name TEXT NOT NULL,
         password_hash TEXT NOT NULL,
         role TEXT NOT NULL DEFAULT 'member',
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS projects (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT,
+        color TEXT NOT NULL DEFAULT '#6366f1',
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
       CREATE TABLE IF NOT EXISTS appeals (
@@ -61,7 +130,9 @@ function createDb() {
         original_video_url TEXT,
         original_script TEXT NOT NULL,
         persona TEXT NOT NULL DEFAULT '',
+        project_id INTEGER REFERENCES projects(id),
         appeal_id INTEGER REFERENCES appeals(id),
+        appeal_text TEXT,
         article_lp_url TEXT,
         article_lp_text TEXT,
         status TEXT NOT NULL DEFAULT 'draft',
@@ -108,6 +179,30 @@ function createDb() {
         cpa REAL,
         roas REAL,
         recorded_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS research_projects (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        genre TEXT NOT NULL,
+        conditions TEXT NOT NULL DEFAULT '{}',
+        free_text TEXT,
+        status TEXT NOT NULL DEFAULT 'idle',
+        result_count INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS research_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id INTEGER NOT NULL REFERENCES research_projects(id),
+        video_url TEXT,
+        platform TEXT,
+        title TEXT NOT NULL,
+        script TEXT,
+        hook_type TEXT,
+        appeal_type TEXT,
+        estimated_views TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
     `);
   }

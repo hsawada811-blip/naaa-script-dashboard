@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { runClaudeJson } from "@/lib/claude-cli";
 import { getScript, getAppeal, getAnalysis, listAppeals } from "@/lib/db/queries";
+import { KNOWLEDGE_BASE } from "@/prompts/knowledge-base";
 
 interface Suggestion {
   type: "appeal" | "script";
@@ -27,7 +28,9 @@ export async function POST(request: Request) {
   const allAppeals = listAppeals();
 
   const prompt = `あなたは獲得広告の訴求戦略アドバイザーです。
-以下の台本と分析結果を元に、類似する訴求パターンと新しい台本の切り口を提案してください。
+以下のナレッジベースと台本・分析結果を元に、類似する訴求パターンと新しい台本の切り口を提案してください。
+
+${KNOWLEDGE_BASE}
 
 ## 元台本
 ${script.originalScript}

@@ -25,10 +25,12 @@ export async function POST(request: Request) {
     originalVideoUrl: body.originalVideoUrl ?? null,
     originalScript: body.originalScript,
     persona: body.persona ?? "",
+    projectId: body.projectId ?? null,
     appealId: body.appealId ? parseInt(body.appealId) : null,
+    appealText: body.appealText ?? null,
     articleLpUrl: body.articleLpUrl ?? null,
     articleLpText: body.articleLpText ?? null,
-    status: "draft",
+    status: body.status ?? "draft",
     createdBy: session?.userId ?? null,
   });
 

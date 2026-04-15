@@ -5,14 +5,14 @@ const CLAUDE_PATH = "/Applications/cmux NIGHTLY.app/Contents/Resources/bin/claud
 /**
  * Claude Code CLIを使ってプロンプトを実行（サブスク内で完結）
  */
-export function runClaude(prompt: string): Promise<string> {
+export function runClaude(prompt: string, options?: { timeout?: number }): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = execFile(
       CLAUDE_PATH,
       ["-p", "--output-format", "text"],
       {
         maxBuffer: 1024 * 1024 * 10, // 10MB
-        timeout: 120000, // 2分
+        timeout: options?.timeout ?? 300000, // デフォルト5分
       },
       (error, stdout, stderr) => {
         if (error) {
@@ -31,9 +31,10 @@ export function runClaude(prompt: string): Promise<string> {
 /**
  * Claude CLIでJSON出力を取得
  */
-export async function runClaudeJson<T>(prompt: string): Promise<T> {
+export async function runClaudeJson<T>(prompt: string, options?: { timeout?: number }): Promise<T> {
   const result = await runClaude(
-    prompt + "\n\n必ず有効なJSONのみを出力してください。説明文やマークダウンのコードブロックは不要です。JSONだけを返してください。"
+    prompt + "\n\n必ず有効なJSONのみを出力してください。説明文やマークダウンのコードブロックは不要です。JSONだけを返してください。",
+    options
   );
 
   // JSON部分を抽出（コードブロックで囲まれている場合に対応）

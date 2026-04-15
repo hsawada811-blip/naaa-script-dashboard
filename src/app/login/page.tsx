@@ -36,10 +36,13 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle className="text-center">台本生成ダッシュボード</CardTitle>
+    <div className="min-h-screen flex items-center justify-center bg-muted/30">
+      <Card className="w-full max-w-sm border-0 shadow-lg">
+        <CardHeader className="pb-2">
+          <div className="text-center">
+            <span className="text-2xl font-bold text-primary">ScriptDB</span>
+          </div>
+          <CardTitle className="text-center text-sm font-normal text-muted-foreground mt-1">台本生成ダッシュボード</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

@@ -2,8 +2,12 @@ import { eq, desc, count, and } from "drizzle-orm";
 import { db } from "./client";
 import {
   users, scripts, generatedScripts, analyses, appeals, articleLps,
+  researchProjects, researchResults, dproEmbeddings, projects, referenceScripts,
   type NewUser, type NewScript, type NewGeneratedScript, type NewAnalysis,
   type NewAppeal, type NewArticleLp, type Script,
+  type NewResearchProject, type NewResearchResult, type ResearchProject,
+  type NewDproEmbedding, type NewProject, type Project,
+  type NewReferenceScript,
 } from "./schema";
 import type { ScriptStatus } from "@/types";
 
@@ -16,10 +20,32 @@ export function createUser(data: NewUser) {
   return db.insert(users).values(data).returning().get();
 }
 
+// --- Projects ---
+export function listProjects() {
+  return db.select().from(projects).orderBy(desc(projects.createdAt)).all();
+}
+
+export function getProject(id: number) {
+  return db.select().from(projects).where(eq(projects.id, id)).get();
+}
+
+export function createProject(data: NewProject) {
+  return db.insert(projects).values(data).returning().get();
+}
+
+export function updateProject(id: number, data: Partial<Project>) {
+  return db.update(projects).set(data).where(eq(projects.id, id)).run();
+}
+
+export function deleteProject(id: number) {
+  return db.delete(projects).where(eq(projects.id, id)).run();
+}
+
 // --- Scripts ---
-export function listScripts(filter?: { status?: ScriptStatus; limit?: number }) {
+export function listScripts(filter?: { status?: ScriptStatus; limit?: number; projectId?: number }) {
   const conditions = [];
   if (filter?.status) conditions.push(eq(scripts.status, filter.status));
+  if (filter?.projectId) conditions.push(eq(scripts.projectId, filter.projectId));
 
   const query = db.select().from(scripts)
     .where(conditions.length ? and(...conditions) : undefined)
@@ -174,4 +200,117 @@ export function getAppealAnalytics() {
 // --- 全分析結果取得 ---
 export function listAllAnalyses() {
   return db.select().from(analyses).orderBy(desc(analyses.createdAt)).all();
+}
+
+// --- Research Projects ---
+export function listResearchProjects() {
+  return db.select().from(researchProjects).orderBy(desc(researchProjects.updatedAt)).all();
+}
+
+export function getResearchProject(id: number) {
+  return db.select().from(researchProjects).where(eq(researchProjects.id, id)).get();
+}
+
+export function createResearchProject(data: NewResearchProject) {
+  return db.insert(researchProjects).values(data).returning().get();
+}
+
+export function updateResearchProject(id: number, data: Partial<ResearchProject>) {
+  return db.update(researchProjects)
+    .set({ ...data, updatedAt: new Date().toISOString() })
+    .where(eq(researchProjects.id, id))
+    .run();
+}
+
+export function deleteResearchProject(id: number) {
+  // 結果も削除
+  db.delete(researchResults).where(eq(researchResults.projectId, id)).run();
+  return db.delete(researchProjects).where(eq(researchProjects.id, id)).run();
+}
+
+// --- Research Results ---
+export function listResearchResults(projectId: number) {
+  return db.select().from(researchResults)
+    .where(eq(researchResults.projectId, projectId))
+    .orderBy(desc(researchResults.createdAt))
+    .all();
+}
+
+export function createResearchResult(data: NewResearchResult) {
+  return db.insert(researchResults).values(data).returning().get();
+}
+
+export function deleteResearchResult(id: number) {
+  return db.delete(researchResults).where(eq(researchResults.id, id)).run();
+}
+
+// --- DPro Embeddings ---
+export function upsertDproEmbedding(data: NewDproEmbedding) {
+  // contentHashで重複チェック → 既存なら何もしない
+  const existing = db.select({ id: dproEmbeddings.id })
+    .from(dproEmbeddings)
+    .where(eq(dproEmbeddings.contentHash, data.contentHash))
+    .get();
+  if (existing) return existing;
+  return db.insert(dproEmbeddings).values(data).returning().get();
+}
+
+export function listDproEmbeddingsByGenre(genre: string) {
+  return db.select().from(dproEmbeddings)
+    .where(eq(dproEmbeddings.genre, genre))
+    .all();
+}
+
+export function listAllDproEmbeddings() {
+  return db.select().from(dproEmbeddings).all();
+}
+
+export function countDproEmbeddings() {
+  return db.select({ value: count() }).from(dproEmbeddings).get()?.value ?? 0;
+}
+
+// --- Reference Scripts ---
+export function listReferenceScripts(filter?: { projectId?: number; genre?: string }) {
+  const conditions = [];
+  if (filter?.projectId) conditions.push(eq(referenceScripts.projectId, filter.projectId));
+  if (filter?.genre) conditions.push(eq(referenceScripts.genre, filter.genre));
+  return db.select().from(referenceScripts)
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(referenceScripts.createdAt))
+    .all();
+}
+
+export function createReferenceScript(data: NewReferenceScript) {
+  // contentHashで重複チェック
+  const existing = db.select({ id: referenceScripts.id })
+    .from(referenceScripts)
+    .where(eq(referenceScripts.contentHash, data.contentHash))
+    .get();
+  if (existing) return null; // 重複スキップ
+  return db.insert(referenceScripts).values(data).returning().get();
+}
+
+export function bulkCreateReferenceScripts(items: NewReferenceScript[]) {
+  let imported = 0;
+  let skipped = 0;
+  for (const item of items) {
+    const result = createReferenceScript(item);
+    if (result) imported++;
+    else skipped++;
+  }
+  return { imported, skipped, total: items.length };
+}
+
+export function deleteReferenceScript(id: number) {
+  return db.delete(referenceScripts).where(eq(referenceScripts.id, id)).run();
+}
+
+export function listReferenceScriptsByGenre(genre: string) {
+  return db.select().from(referenceScripts)
+    .where(eq(referenceScripts.genre, genre))
+    .all();
+}
+
+export function countReferenceScripts() {
+  return db.select({ value: count() }).from(referenceScripts).get()?.value ?? 0;
 }

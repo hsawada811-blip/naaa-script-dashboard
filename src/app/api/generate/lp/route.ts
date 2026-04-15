@@ -21,11 +21,12 @@ export async function POST(request: Request) {
   }
 
   const appeal = script.appealId ? getAppeal(script.appealId) : null;
+  const appealInfo = [appeal?.name, script.appealText].filter(Boolean).join(" / ");
 
   const prompt = getLpGeneratePrompt(
     script.originalScript,
     script.persona,
-    appeal?.name ?? "",
+    appealInfo || "",
     script.articleLpUrl ?? undefined
   );
 

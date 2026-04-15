@@ -19,10 +19,12 @@ export async function POST(request: Request) {
   updateScript(scriptId, { status: "analyzing" });
 
   const appeal = script.appealId ? getAppeal(script.appealId) : null;
+  // 訴求情報: 選択された訴求名 + フリーテキストを結合
+  const appealInfo = [appeal?.name, script.appealText].filter(Boolean).join(" / ");
   const prompt = getAnalyzePrompt(
     script.originalScript,
     script.persona,
-    appeal?.name ?? "",
+    appealInfo || "",
     script.articleLpText ?? undefined
   );
 

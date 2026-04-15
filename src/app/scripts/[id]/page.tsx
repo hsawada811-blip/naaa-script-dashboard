@@ -9,8 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import AnalysisResult from "@/components/AnalysisResult";
 import GenerationStream from "@/components/GenerationStream";
-import LpGenerationStream from "@/components/LpGenerationStream";
-import SuggestionPanel from "@/components/SuggestionPanel";
+import { getVideoEmbedUrl } from "@/lib/video-preview";
 import type { BuzzAnalysis } from "@/types";
 
 interface ScriptData {
@@ -20,8 +19,10 @@ interface ScriptData {
   originalScript: string;
   persona: string;
   appealId: number | null;
+  appealText: string | null;
   articleLpUrl: string | null;
   articleLpText: string | null;
+  dproData: string | null;
   status: string;
   createdAt: string;
 }
@@ -55,6 +56,69 @@ const statusLabels: Record<string, string> = {
   generating: "生成中",
   completed: "完了",
 };
+
+/** DProリサーチデータ表示コンポーネント */
+function DproResearchData({ rawData }: { rawData: string }) {
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+
+  const items = rawData.split("---").map(b => b.trim()).filter(Boolean).map(block => {
+    const get = (label: string) => {
+      const m = block.match(new RegExp(`${label}[:：]\\s*(.+)`));
+      return m ? m[1].trim() : "";
+    };
+    const scriptMatch = block.match(/台本全文[:：]\n([\s\S]*?)$/);
+    const narrationMatch = block.match(/ナレーション[:：]\n([\s\S]*?)$/);
+    const isReference = block.includes("### 参考台本");
+    return {
+      costDifference: get("推定広告費"),
+      playCount: get("再生数"),
+      duration: get("尺"),
+      streamingPeriod: get("配信期間"),
+      videoType: get("タイプ"),
+      hook: get("フック"),
+      script: scriptMatch?.[1]?.trim() || narrationMatch?.[1]?.trim() || "",
+      source: isReference ? "参考台本" : "DPro",
+    };
+  });
+
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs text-muted-foreground mb-2">{items.length}件のリサーチデータ</p>
+      {items.map((item, i) => (
+        <div key={i} className="border rounded-md overflow-hidden">
+          <div
+            className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-muted/50 transition-colors text-sm"
+            onClick={() => setExpandedIdx(expandedIdx === i ? null : i)}
+          >
+            <span className="text-xs text-muted-foreground w-5 shrink-0">#{i + 1}</span>
+            <Badge variant={item.source === "参考台本" ? "default" : "secondary"} className="text-xs shrink-0">
+              {item.source}
+            </Badge>
+            {item.costDifference && <Badge variant="outline" className="text-xs shrink-0">{item.costDifference}</Badge>}
+            {item.playCount && <span className="text-xs text-muted-foreground shrink-0">{item.playCount}再生</span>}
+            {item.duration && <span className="text-xs text-muted-foreground shrink-0">{item.duration}</span>}
+            {item.hook && <span className="text-xs truncate">{item.hook.slice(0, 40)}</span>}
+            <span className="ml-auto text-xs text-muted-foreground shrink-0">{expandedIdx === i ? "▲" : "▼"}</span>
+          </div>
+          {expandedIdx === i && item.script && (
+            <div className="border-t px-3 py-2 space-y-2">
+              {item.hook && (
+                <div>
+                  <p className="text-xs text-muted-foreground mb-1">フック</p>
+                  <p className="text-sm font-medium bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded">{item.hook}</p>
+                </div>
+              )}
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">台本全文</p>
+                <p className="text-sm whitespace-pre-wrap bg-muted/30 p-2 rounded leading-relaxed">{item.script}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function ScriptDetailPage() {
   const params = useParams();
@@ -114,7 +178,7 @@ export default function ScriptDetailPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-6 space-y-6">
+    <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
       {/* ヘッダー */}
       <div className="flex items-start justify-between">
         <div>
@@ -123,53 +187,54 @@ export default function ScriptDetailPage() {
             {new Date(script.createdAt).toLocaleDateString("ja-JP")} 作成
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant={script.status === "completed" ? "default" : "secondary"}>
+        <div className="flex items-center gap-3">
+          <Badge variant={script.status === "completed" ? "default" : "secondary"} className="text-xs">
             {statusLabels[script.status] ?? script.status}
           </Badge>
-          <Button variant="ghost" size="sm" onClick={handleDelete} className="text-destructive">
+          <button onClick={handleDelete} className="text-sm text-destructive hover:underline">
             削除
-          </Button>
+          </button>
         </div>
       </div>
 
-      <Tabs defaultValue="original" className="space-y-4">
-        <TabsList className="flex-wrap">
+      <Tabs defaultValue="original" className="space-y-6">
+        <TabsList className="flex-wrap bg-muted/50 p-1 rounded-lg">
           <TabsTrigger value="original">元台本</TabsTrigger>
           <TabsTrigger value="analysis">分析結果</TabsTrigger>
           <TabsTrigger value="generate">台本生成</TabsTrigger>
           <TabsTrigger value="generated">生成済み ({generatedScripts.length})</TabsTrigger>
-          <TabsTrigger value="lp">記事LP</TabsTrigger>
-          <TabsTrigger value="suggest">AI提案</TabsTrigger>
         </TabsList>
 
         {/* 元台本タブ */}
-        <TabsContent value="original" className="space-y-4">
+        <TabsContent value="original" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>元台本</CardTitle>
+              <CardTitle className="text-base">元台本</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="whitespace-pre-wrap text-sm leading-relaxed">
+              <div className="whitespace-pre-wrap text-sm leading-relaxed bg-muted/30 p-4 rounded-lg">
                 {script.originalScript}
               </div>
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {script.persona && (
-              <Card>
-                <CardHeader><CardTitle className="text-lg">ペルソナ</CardTitle></CardHeader>
-                <CardContent>
-                  <p className="text-sm">{script.persona}</p>
-                </CardContent>
-              </Card>
-            )}
-
-            {script.originalVideoUrl && (
+          {/* 動画プレビュー */}
+          {script.originalVideoUrl && (() => {
+            const embed = getVideoEmbedUrl(script.originalVideoUrl);
+            return (
               <Card>
                 <CardHeader><CardTitle className="text-lg">元動画</CardTitle></CardHeader>
-                <CardContent>
+                <CardContent className="space-y-2">
+                  {embed ? (
+                    <div className="rounded-lg overflow-hidden border bg-black max-w-lg">
+                      <iframe
+                        src={embed.embedUrl}
+                        className="w-full aspect-video"
+                        allow="autoplay"
+                        allowFullScreen
+                      />
+                    </div>
+                  ) : null}
                   <a
                     href={script.originalVideoUrl}
                     target="_blank"
@@ -178,6 +243,26 @@ export default function ScriptDetailPage() {
                   >
                     {script.originalVideoUrl}
                   </a>
+                </CardContent>
+              </Card>
+            );
+          })()}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {script.persona && (
+              <Card>
+                <CardHeader><CardTitle className="text-lg">ペルソナ</CardTitle></CardHeader>
+                <CardContent>
+                  <p className="text-sm whitespace-pre-wrap">{script.persona}</p>
+                </CardContent>
+              </Card>
+            )}
+
+            {script.appealText && (
+              <Card>
+                <CardHeader><CardTitle className="text-lg">訴求内容</CardTitle></CardHeader>
+                <CardContent>
+                  <p className="text-sm whitespace-pre-wrap">{script.appealText}</p>
                 </CardContent>
               </Card>
             )}
@@ -199,27 +284,35 @@ export default function ScriptDetailPage() {
             )}
           </div>
 
+          {/* DProリサーチデータ */}
+          {script.dproData && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">DProリサーチデータ</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <DproResearchData rawData={script.dproData} />
+              </CardContent>
+            </Card>
+          )}
+
           {/* クイックアクション */}
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex gap-2 flex-wrap">
-                {!analysis && (
-                  <Button size="sm" onClick={handleAnalyze} disabled={analyzing}>
-                    {analyzing ? "分析中..." : "AIで分析する"}
-                  </Button>
-                )}
-                {analysis && (
-                  <Button size="sm" variant="outline" onClick={handleAnalyze} disabled={analyzing}>
-                    {analyzing ? "再分析中..." : "再分析する"}
-                  </Button>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <div className="flex gap-3 flex-wrap">
+            {!analysis && (
+              <Button onClick={handleAnalyze} disabled={analyzing}>
+                {analyzing ? "分析中..." : "AIで分析する"}
+              </Button>
+            )}
+            {analysis && (
+              <Button variant="outline" onClick={handleAnalyze} disabled={analyzing}>
+                {analyzing ? "再分析中..." : "再分析する"}
+              </Button>
+            )}
+          </div>
         </TabsContent>
 
         {/* 分析結果タブ */}
-        <TabsContent value="analysis" className="space-y-4">
+        <TabsContent value="analysis" className="space-y-6">
           {analysis ? (
             <>
               <AnalysisResult analysis={analysis} />
@@ -240,7 +333,7 @@ export default function ScriptDetailPage() {
         </TabsContent>
 
         {/* 台本生成タブ */}
-        <TabsContent value="generate" className="space-y-4">
+        <TabsContent value="generate" className="space-y-6">
           <GenerationStream scriptId={parseInt(id)} onSaved={loadData} />
         </TabsContent>
 
@@ -289,22 +382,6 @@ export default function ScriptDetailPage() {
           )}
         </TabsContent>
 
-        {/* 記事LPタブ */}
-        <TabsContent value="lp" className="space-y-4">
-          <LpGenerationStream
-            scriptId={parseInt(id)}
-            scriptTitle={script.title}
-            onSaved={loadData}
-          />
-        </TabsContent>
-
-        {/* AI提案タブ */}
-        <TabsContent value="suggest" className="space-y-4">
-          <SuggestionPanel
-            scriptId={parseInt(id)}
-            appealPattern={analysis?.appealPattern}
-          />
-        </TabsContent>
       </Tabs>
     </div>
   );
