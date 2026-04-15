@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectSeparator, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface ReferenceScript {
   id: number;
@@ -45,7 +45,7 @@ export default function ReferenceScriptsPage() {
   const [adding, setAdding] = useState(false);
   const [isCustomGenre, setIsCustomGenre] = useState(false);
   const [customGenre, setCustomGenre] = useState("");
-  const [genreList, setGenreList] = useState<{ genres: string[]; dbGenres: string[]; presets: string[] }>({ genres: [], dbGenres: [], presets: [] });
+  const [genreList, setGenreList] = useState<string[]>([]);
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
@@ -58,10 +58,18 @@ export default function ReferenceScriptsPage() {
     setLoading(false);
   }, [filterGenre]);
 
+  const fetchGenres = useCallback(async () => {
+    try {
+      const res = await fetch("/api/genres");
+      const data = await res.json();
+      setGenreList(data.genres || []);
+    } catch { /* ignore */ }
+  }, []);
+
   useEffect(() => {
     fetchItems();
-    fetch("/api/genres").then(r => r.json()).then(setGenreList).catch(() => {});
-  }, [fetchItems]);
+    fetchGenres();
+  }, [fetchItems, fetchGenres]);
 
   async function handleDelete(id: number) {
     if (!confirm("この参考台本を削除しますか？")) return;
@@ -86,6 +94,7 @@ export default function ReferenceScriptsPage() {
         setImportResult(data);
         setCsvText("");
         fetchItems();
+        fetchGenres();
       }
     } catch {
       alert("インポートに失敗しました");
@@ -122,6 +131,7 @@ export default function ReferenceScriptsPage() {
         setCustomGenre("");
         setShowAdd(false);
         fetchItems();
+        fetchGenres();
       }
     } catch {
       alert("追加に失敗しました");
@@ -138,8 +148,8 @@ export default function ReferenceScriptsPage() {
     });
   }
 
-  // ジャンル一覧を抽出
-  const genres = Array.from(new Set(items.map(i => i.genre).filter(Boolean))) as string[];
+  // フィルタ用: 実際にデータがあるジャンル
+  const dataGenres = Array.from(new Set(items.map(i => i.genre).filter(Boolean))) as string[];
 
   return (
     <div className="max-w-4xl mx-auto p-4 space-y-4">
@@ -155,12 +165,14 @@ export default function ReferenceScriptsPage() {
           onValueChange={(v) => setFilterGenre(v === "__all__" ? "" : (v ?? ""))}
         >
           <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder="全ジャンル" />
+            <SelectValue>
+              {filterGenre || "全ジャンル"}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="__all__">全ジャンル</SelectItem>
-            {genres.length > 0 && <SelectSeparator />}
-            {genres.map(g => (
+            {dataGenres.length > 0 && <SelectSeparator />}
+            {dataGenres.map(g => (
               <SelectItem key={`filter-${g}`} value={g}>{g}</SelectItem>
             ))}
           </SelectContent>
@@ -223,14 +235,18 @@ export default function ReferenceScriptsPage() {
         <Card>
           <CardContent className="pt-4 space-y-3">
             <div>
-              <Label className="text-sm">ジャンル</Label>
+              <Label className="text-sm">ジャンルタグ</Label>
               <Select
-                value={isCustomGenre ? "__custom__" : newGenre}
+                value={isCustomGenre ? "__custom__" : (newGenre || "__none__")}
                 onValueChange={(v) => {
                   if (!v) return;
                   if (v === "__custom__") {
                     setIsCustomGenre(true);
                     setNewGenre(customGenre);
+                  } else if (v === "__none__") {
+                    setIsCustomGenre(false);
+                    setCustomGenre("");
+                    setNewGenre("");
                   } else {
                     setIsCustomGenre(false);
                     setCustomGenre("");
@@ -239,32 +255,18 @@ export default function ReferenceScriptsPage() {
                 }}
               >
                 <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="ジャンルを選択" />
+                  <SelectValue>
+                    {isCustomGenre ? "新規タグ入力" : (newGenre || "未分類")}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectGroup>
-                    <SelectLabel>よく使うジャンル</SelectLabel>
-                    {genreList.presets.map((g) => (
-                      <SelectItem key={`preset-${g}`} value={g}>
-                        {g}{genreList.dbGenres.includes(g) ? "（データあり）" : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                  {genreList.dbGenres.filter(g => !genreList.presets.includes(g)).length > 0 && (
-                    <>
-                      <SelectSeparator />
-                      <SelectGroup>
-                        <SelectLabel>過去に使用</SelectLabel>
-                        {genreList.dbGenres
-                          .filter(g => !genreList.presets.includes(g))
-                          .map((g) => (
-                            <SelectItem key={`db-${g}`} value={g}>{g}</SelectItem>
-                          ))}
-                      </SelectGroup>
-                    </>
-                  )}
+                  <SelectItem value="__none__">未分類</SelectItem>
+                  {genreList.length > 0 && <SelectSeparator />}
+                  {genreList.map((g) => (
+                    <SelectItem key={g} value={g}>{g}</SelectItem>
+                  ))}
                   <SelectSeparator />
-                  <SelectItem value="__custom__">その他（カスタム入力）</SelectItem>
+                  <SelectItem value="__custom__">新規タグを追加</SelectItem>
                 </SelectContent>
               </Select>
               {isCustomGenre && (
@@ -274,7 +276,7 @@ export default function ReferenceScriptsPage() {
                     setCustomGenre(e.target.value);
                     setNewGenre(e.target.value);
                   }}
-                  placeholder="ジャンル名を入力"
+                  placeholder="新しいジャンル名を入力"
                   className="mt-2"
                   autoFocus
                 />
