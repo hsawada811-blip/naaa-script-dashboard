@@ -150,16 +150,21 @@ export default function ReferenceScriptsPage() {
 
       {/* フィルタ・アクションバー */}
       <div className="flex gap-2 flex-wrap">
-        <select
-          value={filterGenre}
-          onChange={e => setFilterGenre(e.target.value)}
-          className="border rounded px-3 py-1.5 text-sm bg-white"
+        <Select
+          value={filterGenre || "__all__"}
+          onValueChange={(v) => setFilterGenre(v === "__all__" ? "" : (v ?? ""))}
         >
-          <option value="">全ジャンル</option>
-          {genres.map(g => (
-            <option key={g} value={g}>{g}</option>
-          ))}
-        </select>
+          <SelectTrigger className="w-[160px]">
+            <SelectValue placeholder="全ジャンル" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">全ジャンル</SelectItem>
+            {genres.length > 0 && <SelectSeparator />}
+            {genres.map(g => (
+              <SelectItem key={`filter-${g}`} value={g}>{g}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Button
           variant={showImport ? "secondary" : "outline"}
           size="sm"
