@@ -179,13 +179,11 @@ function DproItemRow({ item, index, copiedField, onCopy }: {
   );
 }
 
-function VariantCard({ variant, idx, expandedVariant, setExpandedVariant, copiedField, handleCopy, onUpdate, onSave, saved }: {
+function VariantCard({ variant, idx, expandedVariant, setExpandedVariant, copiedField, handleCopy, onUpdate }: {
   variant: Variant; idx: number;
   expandedVariant: number | null; setExpandedVariant: (v: number | null) => void;
   copiedField: string | null; handleCopy: (text: string, key: string) => void;
   onUpdate?: (idx: number, field: keyof Variant, value: string) => void;
-  onSave?: (idx: number) => void;
-  saved?: boolean;
 }) {
   const [editingScript, setEditingScript] = useState(false);
   const [editingHook, setEditingHook] = useState(false);
@@ -278,11 +276,6 @@ function VariantCard({ variant, idx, expandedVariant, setExpandedVariant, copied
               onClick={() => handleCopy(variant.script, `full-${idx}`)}>
               {copiedField === `full-${idx}` ? "コピー済" : "台本をコピー"}
             </Button>
-            {onSave && (
-              <Button variant="default" size="sm" onClick={() => onSave(idx)} disabled={saved}>
-                {saved ? "保存済み" : "この台本を保存"}
-              </Button>
-            )}
           </div>
         </div>
       )}
@@ -454,7 +447,9 @@ export default function QuickGeneratePage() {
   const [error, setError] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [expandedVariant, setExpandedVariant] = useState<number | null>(null);
-  const [savedVariants, setSavedVariants] = useState<Set<number>>(new Set());
+  const [savedScriptId, setSavedScriptId] = useState<number | null>(null);
+  const [regenerateInstructions, setRegenerateInstructions] = useState("");
+  const [regenerating, setRegenerating] = useState(false);
 
   // 台本入力管理
   function updateScript(idx: number, value: string) {
@@ -553,6 +548,7 @@ export default function QuickGeneratePage() {
 
       const data = await res.json();
       setVariants(data.variants || []);
+      if (data.scriptId) setSavedScriptId(data.scriptId);
       setStep("result");
       setExpandedVariant(0);
     } catch (err) {
@@ -562,6 +558,51 @@ export default function QuickGeneratePage() {
       setError(msg);
       setStep("review");
     }
+  }
+
+  // 再生成
+  async function handleRegenerate() {
+    setRegenerating(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/generate/quick?step=generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scripts: validScripts.map(s => s.trim()),
+          analysisResult: JSON.stringify(analysis),
+          dproData,
+          genre: genre || undefined,
+          articleLpText: articleLpText || undefined,
+          instructions: [instructions, regenerateInstructions].filter(Boolean).join("\n\n追加指示:\n"),
+          projectId: selectedProjectId,
+          previousVariants: variants.map(v => ({ type: v.type, title: v.title, hook: v.hook, script: v.script })),
+        }),
+        signal: AbortSignal.timeout(600000),
+      });
+
+      if (!res.ok) {
+        let errorMessage = "再生成に失敗";
+        try {
+          const text = await res.text();
+          if (text) {
+            const data = JSON.parse(text);
+            errorMessage = data.error || errorMessage;
+          }
+        } catch { /* パース失敗はデフォルトメッセージを使用 */ }
+        throw new Error(errorMessage);
+      }
+
+      const data = await res.json();
+      setVariants(data.variants || []);
+      if (data.scriptId) setSavedScriptId(data.scriptId);
+      setExpandedVariant(0);
+      setRegenerateInstructions("");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "エラー";
+      setError(msg);
+    }
+    setRegenerating(false);
   }
 
   function handleCopy(text: string, key: string) {
@@ -575,28 +616,7 @@ export default function QuickGeneratePage() {
     setVariants(prev => prev.map((v, i) => i === idx ? { ...v, [field]: value } : v));
   }
 
-  // variant個別保存
-  async function handleVariantSave(idx: number) {
-    const v = variants[idx];
-    if (!v) return;
-    try {
-      const res = await fetch("/api/scripts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: `${v.title} (${String.fromCharCode(65 + idx)})`,
-          originalScript: v.script,
-          projectId: selectedProjectId,
-          status: "completed",
-        }),
-      });
-      if (res.ok) {
-        setSavedVariants(prev => new Set([...prev, idx]));
-      }
-    } catch {
-      // 保存失敗は無視
-    }
-  }
+  // （個別保存は廃止 → 生成時に全台本を自動保存）
 
   function handleReset() {
     setStep("input");
@@ -604,7 +624,7 @@ export default function QuickGeneratePage() {
     setVariants([]);
     setDproData("");
     setError(null);
-    setSavedVariants(new Set());
+    setSavedScriptId(null);
   }
 
   return (
@@ -992,7 +1012,14 @@ export default function QuickGeneratePage() {
       {step === "result" && variants.length > 0 && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="font-bold text-lg">生成台本 {variants.length}パターン</h2>
+            <div>
+              <h2 className="font-bold text-lg">生成台本 {variants.length}パターン</h2>
+              {savedScriptId && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  自動保存済み（<a href={`/scripts/${savedScriptId}`} className="text-primary hover:underline">詳細を見る</a>）
+                </p>
+              )}
+            </div>
             <Button
               variant="outline"
               size="sm"
@@ -1013,7 +1040,7 @@ export default function QuickGeneratePage() {
               <h3 className="text-sm font-bold text-muted-foreground">類似展開（B案）— 同じ訴求・フォーマットのバリエーション</h3>
               {variants.filter(v => v.category === "類似展開").map((variant) => {
                 const idx = variants.indexOf(variant);
-                return <VariantCard key={idx} variant={variant} idx={idx} expandedVariant={expandedVariant} setExpandedVariant={setExpandedVariant} copiedField={copiedField} handleCopy={handleCopy} onUpdate={handleVariantUpdate} onSave={handleVariantSave} saved={savedVariants.has(idx)} />;
+                return <VariantCard key={idx} variant={variant} idx={idx} expandedVariant={expandedVariant} setExpandedVariant={setExpandedVariant} copiedField={copiedField} handleCopy={handleCopy} onUpdate={handleVariantUpdate} />;
               })}
             </div>
           )}
@@ -1024,15 +1051,36 @@ export default function QuickGeneratePage() {
               <h3 className="text-sm font-bold text-muted-foreground">新規フォーマット — DPro参考・訴求/構成変更</h3>
               {variants.filter(v => v.category === "新規フォーマット").map((variant) => {
                 const idx = variants.indexOf(variant);
-                return <VariantCard key={idx} variant={variant} idx={idx} expandedVariant={expandedVariant} setExpandedVariant={setExpandedVariant} copiedField={copiedField} handleCopy={handleCopy} onUpdate={handleVariantUpdate} onSave={handleVariantSave} saved={savedVariants.has(idx)} />;
+                return <VariantCard key={idx} variant={variant} idx={idx} expandedVariant={expandedVariant} setExpandedVariant={setExpandedVariant} copiedField={copiedField} handleCopy={handleCopy} onUpdate={handleVariantUpdate} />;
               })}
             </div>
           )}
 
           {/* categoryが無い場合のフォールバック */}
           {!variants.some(v => v.category) && variants.map((variant, idx) => (
-            <VariantCard key={idx} variant={variant} idx={idx} expandedVariant={expandedVariant} setExpandedVariant={setExpandedVariant} copiedField={copiedField} handleCopy={handleCopy} onUpdate={handleVariantUpdate} onSave={handleVariantSave} saved={savedVariants.has(idx)} />
+            <VariantCard key={idx} variant={variant} idx={idx} expandedVariant={expandedVariant} setExpandedVariant={setExpandedVariant} copiedField={copiedField} handleCopy={handleCopy} onUpdate={handleVariantUpdate} />
           ))}
+
+          {/* 再生成 */}
+          <Card>
+            <CardContent className="pt-4 space-y-3">
+              <h3 className="font-bold text-sm">再生成</h3>
+              <Textarea
+                placeholder="修正指示を入力（例: フックをもっと短くして、恐怖訴求を強めて）"
+                value={regenerateInstructions}
+                onChange={e => setRegenerateInstructions(e.target.value)}
+                rows={3}
+                className="text-sm"
+              />
+              <Button
+                onClick={handleRegenerate}
+                disabled={regenerating}
+                className="w-full"
+              >
+                {regenerating ? "再生成中..." : "この指示で再生成する"}
+              </Button>
+            </CardContent>
+          </Card>
 
           {/* リサーチデータ */}
           {dproData && (

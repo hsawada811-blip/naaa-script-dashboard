@@ -275,6 +275,7 @@ async function handleGenerate(body: Record<string, unknown>) {
   const result = await runClaudeJson<{ variants: GeneratedVariant[] }>(prompt, { timeout: 600000 });
 
   // 結果をDBに保存
+  let savedScriptId: number | null = null;
   if (result?.variants?.length > 0) {
     try {
       const title = genre
@@ -286,8 +287,10 @@ async function handleGenerate(body: Record<string, unknown>) {
         originalScript: scripts[0] || "(ジャンル入力のみ)",
         projectId: projectId || null,
         dproData: dproData || null,
+        researchAnalysis: analysisResult || null,
         status: "completed",
       });
+      savedScriptId = script.id;
 
       for (const v of result.variants) {
         const variant = v.category === "新規フォーマット" ? "new_plan" as const : "b_plan" as const;
@@ -305,7 +308,7 @@ async function handleGenerate(body: Record<string, unknown>) {
     }
   }
 
-  return NextResponse.json(result);
+  return NextResponse.json({ ...result, scriptId: savedScriptId });
 }
 
 export async function POST(request: Request) {

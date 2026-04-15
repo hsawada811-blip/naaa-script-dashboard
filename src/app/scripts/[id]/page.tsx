@@ -23,6 +23,7 @@ interface ScriptData {
   articleLpUrl: string | null;
   articleLpText: string | null;
   dproData: string | null;
+  researchAnalysis: string | null;
   status: string;
   createdAt: string;
 }
@@ -331,6 +332,110 @@ export default function ScriptDetailPage() {
 
         {/* 分析結果タブ */}
         <TabsContent value="analysis" className="space-y-6">
+          {/* B案生成のリサーチ分析結果 */}
+          {script.researchAnalysis && (() => {
+            try {
+              const ra = JSON.parse(script.researchAnalysis) as Record<string, unknown>;
+              const persona = ra.persona as Record<string, string> | undefined;
+              const appeal = ra.appeal as Record<string, string> | undefined;
+              const winningPatterns = ra.winningPatterns as string[] | undefined;
+              const ngPatterns = ra.ngPatterns as string[] | undefined;
+              const hookStrategy = ra.hookStrategy as Record<string, unknown> | undefined;
+              const structureStrategy = ra.structureStrategy as Record<string, unknown> | undefined;
+              const ctaStrategy = ra.ctaStrategy as Record<string, string> | undefined;
+              const dproInsights = ra.dproInsights as string | undefined;
+              return (
+                <div className="space-y-4">
+                  <Badge variant="outline" className="text-xs">B案生成リサーチ分析</Badge>
+                  {persona && (
+                    <Card>
+                      <CardHeader><CardTitle className="text-base">ペルソナ</CardTitle></CardHeader>
+                      <CardContent className="grid grid-cols-2 gap-2 text-sm">
+                        {Object.entries(persona).map(([k, v]) => (
+                          <div key={k}><span className="text-muted-foreground">{k}: </span>{String(v)}</div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
+                  {appeal && (
+                    <Card>
+                      <CardHeader><CardTitle className="text-base">訴求戦略</CardTitle></CardHeader>
+                      <CardContent className="space-y-1 text-sm">
+                        {Object.entries(appeal).map(([k, v]) => (
+                          <div key={k}><span className="text-muted-foreground">{k}: </span>{String(v)}</div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {winningPatterns && winningPatterns.length > 0 && (
+                      <Card>
+                        <CardHeader><CardTitle className="text-base">勝ちパターン</CardTitle></CardHeader>
+                        <CardContent>
+                          <ul className="list-disc pl-4 text-sm space-y-1">
+                            {winningPatterns.map((p, i) => <li key={i}>{p}</li>)}
+                          </ul>
+                        </CardContent>
+                      </Card>
+                    )}
+                    {ngPatterns && ngPatterns.length > 0 && (
+                      <Card>
+                        <CardHeader><CardTitle className="text-base">NGパターン</CardTitle></CardHeader>
+                        <CardContent>
+                          <ul className="list-disc pl-4 text-sm space-y-1 text-red-600">
+                            {ngPatterns.map((p, i) => <li key={i}>{p}</li>)}
+                          </ul>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+                  {hookStrategy && (() => {
+                    const patterns: string[] = Array.isArray(hookStrategy.bestPatterns) ? hookStrategy.bestPatterns as string[] : [];
+                    const hooks: string[] = Array.isArray(hookStrategy.exampleHooks) ? hookStrategy.exampleHooks as string[] : [];
+                    return (
+                      <Card>
+                        <CardHeader><CardTitle className="text-base">フック戦略</CardTitle></CardHeader>
+                        <CardContent className="space-y-2 text-sm">
+                          {patterns.map((p, i) => <Badge key={i} variant="secondary" className="mr-1">{p}</Badge>)}
+                          {hookStrategy.reasoning ? <p className="text-muted-foreground mt-2">{String(hookStrategy.reasoning)}</p> : null}
+                          {hooks.map((h, i) => <p key={i} className="bg-yellow-50 dark:bg-yellow-900/20 p-2 rounded text-sm">{h}</p>)}
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
+                  {structureStrategy && (
+                    <Card>
+                      <CardHeader><CardTitle className="text-base">構成戦略</CardTitle></CardHeader>
+                      <CardContent className="space-y-1 text-sm">
+                        <div><span className="text-muted-foreground">推奨フォーマット: </span>{String(structureStrategy.recommendedFormat)}</div>
+                        <div><span className="text-muted-foreground">推奨尺: </span>{String(structureStrategy.idealDuration)}</div>
+                        {structureStrategy.reasoning ? <p className="text-muted-foreground">{String(structureStrategy.reasoning)}</p> : null}
+                      </CardContent>
+                    </Card>
+                  )}
+                  {ctaStrategy && (
+                    <Card>
+                      <CardHeader><CardTitle className="text-base">CTA戦略</CardTitle></CardHeader>
+                      <CardContent className="space-y-1 text-sm">
+                        {Object.entries(ctaStrategy).map(([k, v]) => (
+                          <div key={k}><span className="text-muted-foreground">{k}: </span>{String(v)}</div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
+                  {dproInsights && (
+                    <Card>
+                      <CardHeader><CardTitle className="text-base">DProインサイト</CardTitle></CardHeader>
+                      <CardContent><p className="text-sm whitespace-pre-wrap">{dproInsights}</p></CardContent>
+                    </Card>
+                  )}
+                </div>
+              );
+            } catch {
+              return <pre className="text-xs bg-muted p-3 rounded whitespace-pre-wrap">{script.researchAnalysis}</pre>;
+            }
+          })()}
+          {/* 従来の分析結果 */}
           {analysis ? (
             <>
               <AnalysisResult analysis={analysis} />
@@ -338,7 +443,7 @@ export default function ScriptDetailPage() {
                 {analyzing ? "再分析中..." : "再分析する"}
               </Button>
             </>
-          ) : (
+          ) : !script.researchAnalysis ? (
             <Card>
               <CardContent className="pt-6 text-center space-y-4">
                 <p className="text-muted-foreground">まだ分析されていません</p>
@@ -347,7 +452,7 @@ export default function ScriptDetailPage() {
                 </Button>
               </CardContent>
             </Card>
-          )}
+          ) : null}
         </TabsContent>
 
         {/* 台本生成タブ */}

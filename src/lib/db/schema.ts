@@ -45,6 +45,7 @@ export const scripts = sqliteTable("scripts", {
   articleLpUrl: text("article_lp_url"),
   articleLpText: text("article_lp_text"),
   dproData: text("dpro_data"), // B案生成時のDProリサーチデータ
+  researchAnalysis: text("research_analysis"), // B案生成時のリサーチ分析結果（JSON）
   status: text("status", {
     enum: ["draft", "analyzing", "analyzed", "generating", "completed"],
   }).notNull().default("draft"),
