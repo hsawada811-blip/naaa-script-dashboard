@@ -312,9 +312,9 @@ export async function POST(request: Request) {
     const body = await request.json();
 
     if (step === "research") {
-      return handleResearch(body);
+      return await handleResearch(body);
     } else if (step === "generate") {
-      return handleGenerate(body);
+      return await handleGenerate(body);
     }
 
     return NextResponse.json({ error: "stepパラメータが不正です" }, { status: 400 });

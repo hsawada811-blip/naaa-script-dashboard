@@ -471,8 +471,15 @@ export default function QuickGeneratePage() {
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "リサーチに失敗");
+        let errorMessage = "リサーチに失敗";
+        try {
+          const text = await res.text();
+          if (text) {
+            const data = JSON.parse(text);
+            errorMessage = data.error || errorMessage;
+          }
+        } catch { /* パース失敗はデフォルトメッセージを使用 */ }
+        throw new Error(errorMessage);
       }
 
       const data = await res.json();
@@ -514,8 +521,15 @@ export default function QuickGeneratePage() {
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "生成に失敗");
+        let errorMessage = "生成に失敗";
+        try {
+          const text = await res.text();
+          if (text) {
+            const data = JSON.parse(text);
+            errorMessage = data.error || errorMessage;
+          }
+        } catch { /* パース失敗はデフォルトメッセージを使用 */ }
+        throw new Error(errorMessage);
       }
 
       const data = await res.json();
