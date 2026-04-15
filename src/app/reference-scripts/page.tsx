@@ -62,7 +62,7 @@ export default function ReferenceScriptsPage() {
     try {
       const res = await fetch("/api/genres");
       const data = await res.json();
-      setGenreList(data.genres || []);
+      setGenreList(data.dbGenres || []);
     } catch { /* ignore */ }
   }, []);
 
